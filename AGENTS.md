@@ -33,6 +33,7 @@ uv run python scripts/export_blog_charts.py  # Export PNGs for blog
 ### Testing
 
 > **Note**: No test framework is currently set up. When adding tests:
+>
 > - Use `pytest` as the test framework
 > - Place tests in a `tests/` directory at the project root
 > - Run a single test: `uv run pytest tests/test_file.py::test_function_name`
@@ -41,6 +42,7 @@ uv run python scripts/export_blog_charts.py  # Export PNGs for blog
 ### Code Quality
 
 > **Note**: No linter/formatter is currently configured. When adding:
+>
 > - Use `black` for formatting and `ruff` for linting
 > - Run format: `uv run black .`
 > - Run lint: `uv run ruff check .`
@@ -79,13 +81,13 @@ from src import metrics, strategy
 
 ### Naming Conventions
 
-| Element | Convention | Example |
-|---------|------------|---------|
-| Modules | snake_case | `loader.py` |
-| Functions | snake_case | `calculate_degradation()` |
-| Classes | PascalCase | `RaceSession` |
-| Constants | UPPER_SNAKE_CASE | `FUEL_CORRECTION = 0.06` |
-| Variables | snake_case | `lap_times` |
+| Element   | Convention       | Example                   |
+| --------- | ---------------- | ------------------------- |
+| Modules   | snake_case       | `loader.py`               |
+| Functions | snake_case       | `calculate_degradation()` |
+| Classes   | PascalCase       | `RaceSession`             |
+| Constants | UPPER_SNAKE_CASE | `FUEL_CORRECTION = 0.06`  |
+| Variables | snake_case       | `lap_times`               |
 
 ### Type Hints
 
@@ -113,6 +115,7 @@ except fastf1.api.DataNotAvailableError as e:
 ### Data Conventions
 
 **FastF1 Caching**: Always enable before session load:
+
 ```python
 fastf1.Cache.enable_cache('data/f1_cache')
 ```
@@ -122,6 +125,7 @@ fastf1.Cache.enable_cache('data/f1_cache')
 **Fuel Correction**: ~0.06s/lap improvement from fuel burn
 
 **Cross-Race Comparison**: Use percentage gap, not raw times:
+
 ```python
 pct_gap = 100 * (driver_time - leader_time) / leader_time
 ```
@@ -191,3 +195,7 @@ notebooks/               # Ad-hoc exploration only
 2. Add tests to `tests/` (create if needed)
 3. Update dashboard page or create new page in `dashboard/pages/`
 4. Run lint and typecheck
+
+## Reference
+
+- `docs/research.md` — original research on FastF1, OpenF1, analysis techniques, and prediction modelling that informed this project's design

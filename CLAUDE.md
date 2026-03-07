@@ -197,3 +197,7 @@ __pycache__/
 .ipynb_checkpoints/
 exports/
 ```
+
+## Reference
+
+- `docs/research.md` — original research on FastF1, OpenF1, analysis techniques, and prediction modelling that informed this project's design
