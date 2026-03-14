@@ -2,6 +2,9 @@
 data/
 exports/
 
+# Implementation plans
+plans/
+
 # Python
 .venv/
 __pycache__/

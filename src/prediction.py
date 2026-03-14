@@ -5,9 +5,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from src.circuit import CircuitCluster, get_cluster, normalize_circuit_id
+from src.circuit import CircuitCluster, get_cluster
 from src.loader import (
-    get_db_connection,
     load_pit_stops_from_db,
     load_races_from_db,
     load_results_from_db,
@@ -29,6 +28,7 @@ ELO_K_FACTOR = 32
 # ---------------------------------------------------------------------------
 # Feature Engineering
 # ---------------------------------------------------------------------------
+
 
 def compute_rolling_form(
     results: pd.DataFrame,
@@ -64,9 +64,7 @@ def compute_circuit_history(
 ) -> Optional[float]:
     """Average finish position at this specific circuit over last N visits."""
     # Find all rounds at this circuit
-    circuit_rounds = races[
-        races["circuit_id"] == circuit_id
-    ][["year", "round"]].copy()
+    circuit_rounds = races[races["circuit_id"] == circuit_id][["year", "round"]].copy()
 
     if circuit_rounds.empty:
         return None
@@ -97,17 +95,16 @@ def compute_cluster_form(
     cluster_circuits = races[
         races["circuit_id"].apply(lambda cid: get_cluster(cid) == cluster)
     ]
-    cluster_rounds = cluster_circuits[
-        cluster_circuits["year"] == year
-    ][["year", "round"]]
+    cluster_rounds = cluster_circuits[cluster_circuits["year"] == year][
+        ["year", "round"]
+    ]
 
     if cluster_rounds.empty:
         return None
 
     drv_cluster = results.merge(cluster_rounds, on=["year", "round"])
     drv_cluster = drv_cluster[
-        (drv_cluster["driver"] == driver)
-        & (drv_cluster["finish_position"].notna())
+        (drv_cluster["driver"] == driver) & (drv_cluster["finish_position"].notna())
     ]
 
     if drv_cluster.empty:
@@ -121,18 +118,30 @@ def compute_pit_consistency(
     driver: str,
     year: int,
 ) -> float:
-    """Score from 0-1 based on pit stop duration consistency (lower std = better)."""
-    drv_pits = pit_stops[
-        (pit_stops["driver"] == driver)
-        & (pit_stops["year"] == year)
-        & (pit_stops["duration_ms"].notna())
-    ]
+    """Score from 0-1 based on pit stop duration consistency (lower std = better).
 
-    if len(drv_pits) < 2:
-        return 0.5  # Neutral score if insufficient data
+    Prefers stationary_ms when at least 2 non-null values exist, otherwise falls
+    back to duration_ms.
+    """
+    drv_pits = pit_stops[(pit_stops["driver"] == driver) & (pit_stops["year"] == year)]
 
-    std_ms = drv_pits["duration_ms"].std()
-    # Normalize: std of 0 = score 1.0, std of 2000ms+ = score 0.0
+    use_stationary = (
+        "stationary_ms" in drv_pits.columns
+        and drv_pits["stationary_ms"].notna().sum() >= 2
+    )
+
+    if use_stationary:
+        durations = drv_pits["stationary_ms"].dropna()
+        if len(durations) < 2:
+            return 0.5
+        std_ms = durations.std()
+        return float(max(0.0, 1.0 - std_ms / 500.0))
+
+    drv_durations = drv_pits[drv_pits["duration_ms"].notna()]
+    if len(drv_durations) < 2:
+        return 0.5
+
+    std_ms = drv_durations["duration_ms"].std()
     return float(max(0.0, 1.0 - std_ms / 2000.0))
 
 
@@ -144,13 +153,17 @@ def compute_quali_conversion(
     n_races: int = 5,
 ) -> float:
     """Score 0-1 centered at 0.5 based on avg positions gained grid-to-finish."""
-    drv = results[
-        (results["driver"] == driver)
-        & (results["year"] == year)
-        & (results["round"] < as_of_round)
-        & (results["grid_position"].notna())
-        & (results["finish_position"].notna())
-    ].sort_values("round").tail(n_races)
+    drv = (
+        results[
+            (results["driver"] == driver)
+            & (results["year"] == year)
+            & (results["round"] < as_of_round)
+            & (results["grid_position"].notna())
+            & (results["finish_position"].notna())
+        ]
+        .sort_values("round")
+        .tail(n_races)
+    )
 
     if drv.empty:
         return 0.5
@@ -164,6 +177,7 @@ def compute_quali_conversion(
 # ---------------------------------------------------------------------------
 # Scoring
 # ---------------------------------------------------------------------------
+
 
 def predict_race(
     year: int,
@@ -179,9 +193,9 @@ def predict_race(
     if weights is None:
         weights = DEFAULT_WEIGHTS.copy()
 
-    results = load_results_from_db()
+    results = load_results_from_db(session_type="R")
     races = load_races_from_db()
-    pit_stops = load_pit_stops_from_db(year=year)
+    pit_stops = load_pit_stops_from_db(year=year, session_type="R")
 
     if results.empty:
         return pd.DataFrame()
@@ -199,7 +213,11 @@ def predict_race(
         # Compute each component
         rolling = compute_rolling_form(results, driver, next_round, year)
         circuit = compute_circuit_history(results, races, driver, next_circuit_id)
-        cluster_f = compute_cluster_form(results, races, driver, cluster, year) if cluster else None
+        cluster_f = (
+            compute_cluster_form(results, races, driver, cluster, year)
+            if cluster
+            else None
+        )
         pit_cons = compute_pit_consistency(pit_stops, driver, year)
         quali_conv = compute_quali_conversion(results, driver, year, next_round)
 
@@ -218,25 +236,34 @@ def predict_race(
             + weights["quali_conversion"] * quali_conv
         )
 
-        predictions.append({
-            "driver": driver,
-            "score": score,
-            "recent_form": recent_score,
-            "circuit_history": circuit_score,
-            "cluster_form": cluster_score,
-            "pit_consistency": pit_cons,
-            "quali_conversion": quali_conv,
-            "rolling_avg_finish": rolling,
-        })
+        predictions.append(
+            {
+                "driver": driver,
+                "score": score,
+                "recent_form": recent_score,
+                "circuit_history": circuit_score,
+                "cluster_form": cluster_score,
+                "pit_consistency": pit_cons,
+                "quali_conversion": quali_conv,
+                "rolling_avg_finish": rolling,
+            }
+        )
 
     df = pd.DataFrame(predictions).sort_values("score", ascending=False)
     df["rank"] = range(1, len(df) + 1)
+
+    races_available = results[
+        (results["year"] == year) & (results["round"] < next_round)
+    ]["round"].nunique()
+    df.attrs["races_available"] = int(races_available)
+
     return df
 
 
 # ---------------------------------------------------------------------------
 # Elo Ratings
 # ---------------------------------------------------------------------------
+
 
 def update_elo_after_race(
     current_ratings: dict,
@@ -283,7 +310,7 @@ def compute_elo_ratings(
     Returns dict: {driver_abbreviation: elo_rating}.
     """
     if results is None:
-        results = load_results_from_db()
+        results = load_results_from_db(session_type="R")
 
     if results.empty:
         return {}

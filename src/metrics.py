@@ -340,3 +340,137 @@ def consistency_metrics(
         })
 
     return pd.DataFrame(results).sort_values("mean_ms")
+
+
+# ---------------------------------------------------------------------------
+# Qualifying Analysis
+# ---------------------------------------------------------------------------
+
+def qualifying_progression(
+    laps: pd.DataFrame,
+    grid_size: int = 20,
+    q1_eliminated: int = 5,
+    q2_eliminated: int = 5,
+) -> pd.DataFrame:
+    """Best lap per driver ranked into Q1/Q2/Q3 segments by elimination position.
+
+    Returns DataFrame: driver, best_lap_ms, best_s1_ms, best_s2_ms, best_s3_ms,
+    position, segment, eliminated_in.
+    """
+    valid = laps[(laps["is_accurate"] == 1) & (laps["lap_time_ms"].notna())].copy()
+    if valid.empty:
+        return pd.DataFrame()
+
+    # Best lap per driver (row with minimum lap_time_ms)
+    best_idx = valid.groupby("driver")["lap_time_ms"].idxmin()
+    best = valid.loc[best_idx, ["driver", "lap_time_ms", "sector1_ms", "sector2_ms", "sector3_ms"]].copy()
+    best.columns = ["driver", "best_lap_ms", "best_s1_ms", "best_s2_ms", "best_s3_ms"]
+    best = best.sort_values("best_lap_ms").reset_index(drop=True)
+    best["position"] = range(1, len(best) + 1)
+
+    n_drivers = len(best)
+    q1_cutoff = n_drivers - q1_eliminated + 1
+    q2_cutoff = q1_cutoff - q2_eliminated
+
+    def _assign_segment(pos: int) -> str:
+        if pos >= q1_cutoff:
+            return "Q1"
+        elif pos >= q2_cutoff:
+            return "Q2"
+        return "Q3"
+
+    def _assign_eliminated(pos: int) -> Optional[str]:
+        if pos >= q1_cutoff:
+            return "Q1"
+        elif pos >= q2_cutoff:
+            return "Q2"
+        return None
+
+    best["segment"] = best["position"].apply(_assign_segment)
+    best["eliminated_in"] = best["position"].apply(_assign_eliminated)
+
+    return best
+
+
+def lap_improvement_delta(
+    laps: pd.DataFrame,
+    driver: str,
+) -> pd.DataFrame:
+    """Time gained between qualifying attempts for a single driver.
+
+    Returns DataFrame: attempt, lap_number, lap_time_ms, delta_ms,
+    cumulative_improvement_ms.
+    """
+    drv = laps[
+        (laps["driver"] == driver)
+        & (laps["is_accurate"] == 1)
+        & (laps["lap_time_ms"].notna())
+    ].sort_values("lap_number").copy()
+
+    if drv.empty:
+        return pd.DataFrame()
+
+    drv = drv.reset_index(drop=True)
+    drv["attempt"] = range(1, len(drv) + 1)
+
+    first_time = drv["lap_time_ms"].iloc[0]
+    drv["delta_ms"] = drv["lap_time_ms"].diff()
+    drv["cumulative_improvement_ms"] = drv["lap_time_ms"] - first_time
+
+    return drv[["attempt", "lap_number", "lap_time_ms", "delta_ms", "cumulative_improvement_ms"]]
+
+
+def gap_to_pole(laps: pd.DataFrame) -> pd.DataFrame:
+    """Each driver's gap to the fastest qualifier.
+
+    Returns DataFrame: driver, best_lap_ms, gap_ms, gap_pct, position.
+    """
+    valid = laps[(laps["is_accurate"] == 1) & (laps["lap_time_ms"].notna())].copy()
+    if valid.empty:
+        return pd.DataFrame()
+
+    best = valid.groupby("driver")["lap_time_ms"].min().reset_index()
+    best.columns = ["driver", "best_lap_ms"]
+    best = best.sort_values("best_lap_ms").reset_index(drop=True)
+
+    pole_time = best["best_lap_ms"].iloc[0]
+    best["gap_ms"] = best["best_lap_ms"] - pole_time
+    best["gap_pct"] = 100.0 * best["gap_ms"] / pole_time
+    best["position"] = range(1, len(best) + 1)
+
+    return best
+
+
+# ---------------------------------------------------------------------------
+# Practice Analysis
+# ---------------------------------------------------------------------------
+
+def long_run_pace(
+    laps: pd.DataFrame,
+    min_stint_laps: int = 5,
+) -> pd.DataFrame:
+    """Average pace per stint, flagged as long run or short run.
+
+    Returns DataFrame: driver, stint, compound, mean_pace_ms, n_laps, is_long_run.
+    """
+    clean = filter_clean_laps(laps)
+    if clean.empty:
+        return pd.DataFrame()
+
+    groups = clean.groupby(["driver", "stint", "compound"])
+    rows = []
+    for (driver, stint, compound), group in groups:
+        n = len(group)
+        rows.append({
+            "driver": driver,
+            "stint": stint,
+            "compound": compound,
+            "mean_pace_ms": group["lap_time_ms"].mean(),
+            "n_laps": n,
+            "is_long_run": n >= min_stint_laps,
+        })
+
+    if not rows:
+        return pd.DataFrame()
+
+    return pd.DataFrame(rows).sort_values(["compound", "mean_pace_ms"])

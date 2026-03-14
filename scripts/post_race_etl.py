@@ -12,7 +12,6 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import fastf1
 
 from src.loader import get_event_schedule, init_cache, init_db, store_weekend
 

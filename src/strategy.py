@@ -1,6 +1,6 @@
 """Stint analysis, undercut/overcut detection, and safety car impact."""
 
-from typing import List, Optional
+from typing import List
 
 import pandas as pd
 
@@ -8,6 +8,7 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # Stint Timeline
 # ---------------------------------------------------------------------------
+
 
 def get_stint_summary(laps: pd.DataFrame) -> pd.DataFrame:
     """Build stint summary: driver, stint, compound, start_lap, end_lap, stint_length.
@@ -21,14 +22,16 @@ def get_stint_summary(laps: pd.DataFrame) -> pd.DataFrame:
     for (driver, stint), group in laps.groupby(["driver", "stint"]):
         if pd.isna(stint):
             continue
-        results.append({
-            "driver": driver,
-            "stint": int(stint),
-            "compound": group["compound"].iloc[0] if not group.empty else "",
-            "start_lap": int(group["lap_number"].min()),
-            "end_lap": int(group["lap_number"].max()),
-            "stint_length": len(group),
-        })
+        results.append(
+            {
+                "driver": driver,
+                "stint": int(stint),
+                "compound": group["compound"].iloc[0] if not group.empty else "",
+                "start_lap": int(group["lap_number"].min()),
+                "end_lap": int(group["lap_number"].max()),
+                "stint_length": len(group),
+            }
+        )
 
     return pd.DataFrame(results)
 
@@ -36,6 +39,7 @@ def get_stint_summary(laps: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Undercut / Overcut Detection
 # ---------------------------------------------------------------------------
+
 
 def _get_pit_laps(laps: pd.DataFrame, driver: str) -> List[int]:
     """Get lap numbers where a driver pitted (pit_in)."""
@@ -81,21 +85,27 @@ def detect_undercuts(
                             (laps["driver"] == d2) & (laps["lap_number"] == p2 + 1)
                         ]["position"].values
 
-                        if (len(d1_pos_before) > 0 and len(d2_pos_before) > 0
-                                and len(d1_pos_after) > 0 and len(d2_pos_after) > 0):
+                        if (
+                            len(d1_pos_before) > 0
+                            and len(d2_pos_before) > 0
+                            and len(d1_pos_after) > 0
+                            and len(d2_pos_after) > 0
+                        ):
                             was_behind = d1_pos_before[0] > d2_pos_before[0]
                             now_ahead = d1_pos_after[0] < d2_pos_after[0]
                             successful = was_behind and now_ahead
 
-                            undercuts.append({
-                                "undercutter": d1,
-                                "victim": d2,
-                                "undercut_lap": p1,
-                                "victim_pit_lap": p2,
-                                "position_before": int(d1_pos_before[0]),
-                                "position_after": int(d1_pos_after[0]),
-                                "successful": successful,
-                            })
+                            undercuts.append(
+                                {
+                                    "undercutter": d1,
+                                    "victim": d2,
+                                    "undercut_lap": p1,
+                                    "victim_pit_lap": p2,
+                                    "position_before": int(d1_pos_before[0]),
+                                    "position_after": int(d1_pos_after[0]),
+                                    "successful": successful,
+                                }
+                            )
 
     return undercuts
 
@@ -137,21 +147,27 @@ def detect_overcuts(
                             (laps["driver"] == d2) & (laps["lap_number"] == p1 + 1)
                         ]["position"].values
 
-                        if (len(d1_pos_before) > 0 and len(d2_pos_before) > 0
-                                and len(d1_pos_after) > 0 and len(d2_pos_after) > 0):
+                        if (
+                            len(d1_pos_before) > 0
+                            and len(d2_pos_before) > 0
+                            and len(d1_pos_after) > 0
+                            and len(d2_pos_after) > 0
+                        ):
                             was_behind = d1_pos_before[0] > d2_pos_before[0]
                             now_ahead = d1_pos_after[0] < d2_pos_after[0]
                             successful = was_behind and now_ahead
 
-                            overcuts.append({
-                                "overcutter": d1,
-                                "victim": d2,
-                                "overcutter_pit_lap": p1,
-                                "victim_pit_lap": p2,
-                                "position_before": int(d1_pos_before[0]),
-                                "position_after": int(d1_pos_after[0]),
-                                "successful": successful,
-                            })
+                            overcuts.append(
+                                {
+                                    "overcutter": d1,
+                                    "victim": d2,
+                                    "overcutter_pit_lap": p1,
+                                    "victim_pit_lap": p2,
+                                    "position_before": int(d1_pos_before[0]),
+                                    "position_after": int(d1_pos_after[0]),
+                                    "successful": successful,
+                                }
+                            )
 
     return overcuts
 
@@ -159,6 +175,7 @@ def detect_overcuts(
 # ---------------------------------------------------------------------------
 # Safety Car Analysis
 # ---------------------------------------------------------------------------
+
 
 def detect_safety_car_periods(laps: pd.DataFrame) -> List[dict]:
     """Identify SC/VSC periods from track_status column.
@@ -170,13 +187,13 @@ def detect_safety_car_periods(laps: pd.DataFrame) -> List[dict]:
         return []
 
     # Get unique laps with SC or VSC status
-    sc_laps = laps[
-        laps["track_status"].str.contains("4", na=False)
-    ]["lap_number"].unique()
+    sc_laps = laps[laps["track_status"].str.contains("4", na=False)][
+        "lap_number"
+    ].unique()
 
-    vsc_laps = laps[
-        laps["track_status"].str.contains("6", na=False)
-    ]["lap_number"].unique()
+    vsc_laps = laps[laps["track_status"].str.contains("6", na=False)][
+        "lap_number"
+    ].unique()
 
     periods = []
 
@@ -190,19 +207,23 @@ def detect_safety_car_periods(laps: pd.DataFrame) -> List[dict]:
 
         for lap in lap_nums[1:]:
             if lap - prev > 1:
-                periods.append({
-                    "type": status_type,
-                    "start_lap": int(start),
-                    "end_lap": int(prev),
-                })
+                periods.append(
+                    {
+                        "type": status_type,
+                        "start_lap": int(start),
+                        "end_lap": int(prev),
+                    }
+                )
                 start = lap
             prev = lap
 
-        periods.append({
-            "type": status_type,
-            "start_lap": int(start),
-            "end_lap": int(prev),
-        })
+        periods.append(
+            {
+                "type": status_type,
+                "start_lap": int(start),
+                "end_lap": int(prev),
+            }
+        )
 
     return sorted(periods, key=lambda p: p["start_lap"])
 
@@ -231,14 +252,16 @@ def sc_beneficiaries(
             ]
             pitted = (drv_laps["is_pit_in"] == 1).any() if not drv_laps.empty else False
 
-            results.append({
-                "driver": driver,
-                "sc_period_index": idx,
-                "sc_type": period["type"],
-                "start_lap": period["start_lap"],
-                "end_lap": period["end_lap"],
-                "pitted_during_sc": pitted,
-            })
+            results.append(
+                {
+                    "driver": driver,
+                    "sc_period_index": idx,
+                    "sc_type": period["type"],
+                    "start_lap": period["start_lap"],
+                    "end_lap": period["end_lap"],
+                    "pitted_during_sc": pitted,
+                }
+            )
 
     return pd.DataFrame(results)
 
@@ -247,11 +270,13 @@ def sc_beneficiaries(
 # Pit Stop Analysis
 # ---------------------------------------------------------------------------
 
+
 def pit_stop_analysis(pit_stops: pd.DataFrame) -> pd.DataFrame:
     """Summary statistics of pit stop durations per driver.
 
     Returns DataFrame: driver, n_stops, mean_duration_ms, std_duration_ms,
-    best_stop_ms.
+    best_stop_ms, and optionally mean_stationary_ms, std_stationary_ms,
+    best_stationary_ms if stationary_ms data is available.
     """
     if pit_stops.empty:
         return pd.DataFrame()
@@ -262,13 +287,26 @@ def pit_stop_analysis(pit_stops: pd.DataFrame) -> pd.DataFrame:
         if durations.empty:
             continue
 
-        results.append({
+        result = {
             "driver": driver,
             "n_stops": len(group),
             "mean_duration_ms": durations.mean(),
             "std_duration_ms": durations.std() if len(durations) > 1 else 0.0,
             "best_stop_ms": durations.min(),
-        })
+        }
+
+        if "stationary_ms" in group.columns:
+            stationary = group["stationary_ms"].dropna()
+            if len(stationary) >= 2:
+                result["mean_stationary_ms"] = stationary.mean()
+                result["std_stationary_ms"] = stationary.std()
+                result["best_stationary_ms"] = stationary.min()
+            elif len(stationary) == 1:
+                result["mean_stationary_ms"] = stationary.iloc[0]
+                result["std_stationary_ms"] = 0.0
+                result["best_stationary_ms"] = stationary.iloc[0]
+
+        results.append(result)
 
     if not results:
         return pd.DataFrame()
