@@ -45,12 +45,15 @@ f1-analysis/
 │
 ├── scripts/
 │   ├── post_race_etl.py     # Run after each race to load data into DB
-│   ├── backfill_season.py   # Bulk load historical season data
 │   └── export_blog_charts.py # Export dashboard charts as PNGs for blog
+│
+├── tests/                   # Tests (pytest, synthetic data)
+│   ├── test_metrics.py
+│   ├── test_circuit.py
+│   └── test_prediction.py
 │
 ├── data/                    # All local data (gitignored)
 │   ├── f1_cache/            # FastF1 cache directory
-│   ├── processed/           # Parquet files
 │   └── f1.db               # SQLite database
 │
 ├── exports/                 # Blog-ready PNGs per race (e.g., exports/2025_R01/)
@@ -67,7 +70,7 @@ f1-analysis/
 - **Notebooks import from `src/`** — never duplicate logic. If you copy-paste code between notebooks, extract it into `src/`.
 - **If a notebook exploration pattern proves generally useful, promote it**: move the logic to `src/`, add a dashboard page, delete the notebook.
 - **Own database (SQLite)** stores processed data. FastF1's cache is a download cache, not an analytical database. The SQLite DB enables cross-race queries, rolling aggregations, and pre-computed metrics without reloading sessions.
-- **Parquet files** for intermediate storage when SQL isn't needed. One file per race for lap data.
+- **SQLite only** — no Parquet files. One storage layer keeps things simple for a learning project.
 - **Two-repo setup**: this repo is the analysis workbench. A separate repo (`f1-blog`) hosts the Astro-based GitHub Pages site. `exports/` in this repo contains PNGs that get copied to the blog repo's `src/assets/`.
 
 ## Common Commands
@@ -77,9 +80,11 @@ uv sync                                  # Install all dependencies from lockfil
 uv run streamlit run dashboard/app.py    # Run dashboard
 uv run jupyter lab                       # Run notebooks
 uv add <package>                         # Add new dependency
-uv run python scripts/post_race_etl.py   # Post-race data loading
-uv run python scripts/backfill_season.py # Bulk historical data load
+uv run python scripts/post_race_etl.py --year YYYY --round N             # Full weekend (FP1-R)
+uv run python scripts/post_race_etl.py --year YYYY --round N --session FP1     # Single session
+uv run python scripts/post_race_etl.py --year YYYY --round N --session FP1,FP2 # Multiple sessions
 uv run python scripts/export_blog_charts.py  # Export PNGs for blog
+uv run pytest tests/                     # Run tests
 ```
 
 ## Package Management
@@ -104,6 +109,13 @@ Uses **uv** (not pip/venv/conda).
 
 ## Data Conventions
 
+### SQLite Storage
+
+- Lap/sector times stored as INTEGER milliseconds (not float seconds or timedelta)
+- Convert at boundaries: `_timedelta_to_ms()` for writes, `ms / 1000.0` for reads
+- Laps, stints, and weather tables include a `session_type` column (R/Q/FP1/FP2/FP3)
+- ETL defaults to full weekend (FP1, FP2, FP3, Q, R); use `--session` to load specific sessions
+
 ### FastF1 Caching
 
 Always enable before any session load:
@@ -114,9 +126,9 @@ fastf1.Cache.enable_cache('data/f1_cache')
 
 ### Lap Filtering
 
-- Use `pick_quicklaps(threshold=1.07)` for pace analysis — removes pit laps, SC laps, outliers
-- Use `pick_accurate()` for timing-critical analysis — removes laps with sync issues
-- Always filter out in-laps and out-laps for degradation calculations (`PitInTime.isna() & PitOutTime.isna()`)
+- Use `metrics.filter_clean_laps()` for pace analysis on SQLite DataFrames — removes pit laps, inaccurate laps, and outliers (>107% of fastest)
+- When working with FastF1 objects directly, use `pick_quicklaps(threshold=1.07)` and `pick_accurate()`
+- Always filter out in-laps and out-laps for degradation calculations
 
 ### Tyre Compounds
 
@@ -169,9 +181,9 @@ Circuit clusters: night/desert, fast street, tight/low-overtaking, classic high-
 
 Weekly cadence per race:
 
-1. Run `scripts/post_race_etl.py` after the race
-2. Open dashboard — standard analysis is auto-generated
-3. Run `scripts/export_blog_charts.py` for blog PNGs
+1. Run `scripts/post_race_etl.py --year YYYY --round N` after the race (loads full weekend: FP1–R; use `--session FP1` to load a specific session)
+2. Open dashboard — standard analysis is auto-generated from SQLite
+3. Run `scripts/export_blog_charts.py --year YYYY --round N` for blog PNGs
 4. Write blog post in the `f1-blog` repo referencing exported charts
 5. Optionally: explore specific questions in `notebooks/scratch.ipynb`
 

@@ -25,27 +25,28 @@ uv run <command>                         # Run any command in the environment
 ```bash
 uv run streamlit run dashboard/app.py    # Run Streamlit dashboard
 uv run jupyter lab                       # Run Jupyter notebooks
-uv run python scripts/post_race_etl.py   # Post-race data loading
-uv run python scripts/backfill_season.py # Bulk historical data load
+uv run python scripts/post_race_etl.py --year YYYY --round N             # Full weekend (FP1-R)
+uv run python scripts/post_race_etl.py --year YYYY --round N --session FP1     # Single session
+uv run python scripts/post_race_etl.py --year YYYY --round N --session FP1,FP2 # Multiple sessions
 uv run python scripts/export_blog_charts.py  # Export PNGs for blog
 ```
 
 ### Testing
 
-> **Note**: No test framework is currently set up. When adding tests:
->
-> - Use `pytest` as the test framework
-> - Place tests in a `tests/` directory at the project root
-> - Run a single test: `uv run pytest tests/test_file.py::test_function_name`
-> - Run all tests: `uv run pytest tests/`
+```bash
+uv run pytest tests/                    # Run all tests
+uv run pytest tests/test_metrics.py     # Run specific test file
+uv run pytest tests/test_file.py::TestClass::test_name  # Run single test
+```
+
+Tests use synthetic DataFrames (no FastF1 download needed). Dev dependencies: `uv sync --extra dev`
 
 ### Code Quality
 
-> **Note**: No linter/formatter is currently configured. When adding:
->
-> - Use `black` for formatting and `ruff` for linting
-> - Run format: `uv run black .`
-> - Run lint: `uv run ruff check .`
+```bash
+uv run ruff check .                     # Lint
+uv run ruff check --fix .               # Auto-fix lint issues
+```
 
 ---
 
@@ -168,9 +169,11 @@ notebooks/               # Ad-hoc exploration only
 
 ### Data Storage
 
-- **SQLite** (`data/f1.db`): Processed race data, cross-race queries
-- **Parquet** (`data/processed/`): Per-race lap data
+- **SQLite** (`data/f1.db`): Processed race data, cross-race queries (sole storage layer)
 - **FastF1 cache** (`data/f1_cache/`): Download cache only
+- Lap/sector times stored as INTEGER milliseconds in SQLite
+- Laps, stints, weather tables include `session_type` column (R/Q/FP1/FP2/FP3)
+- ETL defaults to full weekend (FP1, FP2, FP3, Q, R); use `--session` flag to load specific sessions
 
 ### Two-Repo Setup
 

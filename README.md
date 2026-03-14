@@ -18,11 +18,14 @@ uv sync
 # Run the dashboard
 uv run streamlit run dashboard/app.py
 
-# Post-race data pipeline
-uv run python scripts/post_race_etl.py
+# Post-race data pipeline — load full weekend (FP1, FP2, FP3, Q, R)
+uv run python scripts/post_race_etl.py --year 2026 --round 2
+
+# Load a specific session only
+uv run python scripts/post_race_etl.py --year 2026 --round 2 --session FP1
 
 # Export charts for blog
-uv run python scripts/export_blog_charts.py
+uv run python scripts/export_blog_charts.py --year 2026 --round 2
 ```
 
 ## Project Structure
